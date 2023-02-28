@@ -33,6 +33,15 @@ func mustParseDigest(t *testing.T, digestStr string) name.Digest {
 	return digest
 }
 
+func mustParseTag(t *testing.T, tagStr string) name.Tag {
+	t.Helper()
+	digest, err := name.NewTag(tagStr)
+	if err != nil {
+		t.Fatalf("could not parse tag %q: %v", tagStr, err)
+	}
+	return digest
+}
+
 func TestMarshalCosign(t *testing.T) {
 	t.Parallel()
 	testCases := []struct {
@@ -43,25 +52,38 @@ func TestMarshalCosign(t *testing.T) {
 		{
 			desc: "no claims",
 			imgPayload: Cosign{
-				Image: mustParseDigest(t, "example.com/test/image@"+validDigest),
+				ClaimedIdentity: mustParseTag(t, "example.com/test/image:tag"),
+				ImageDigest:     validDigest,
 			},
-			expected: `{"critical":{"identity":{"docker-reference":"example.com/test/image"},"image":{"docker-manifest-digest":"sha256:d34db33fd34db33fd34db33fd34db33fd34db33fd34db33fd34db33fd34db33f"},"type":"cosign container image signature"},"optional":null}`,
+			expected: `{"critical":{"identity":{"docker-reference":"example.com/test/image:tag"},"image":{"docker-manifest-digest":"sha256:d34db33fd34db33fd34db33fd34db33fd34db33fd34db33fd34db33fd34db33f"},"type":"cosign container image signature"},"optional":null}`,
+		},
+		{
+			// - Test that signing a digest is possible in principle
+			// - Demonstrate how the ClaimedIdenitty and ImageDigest fields can differ: signing a multi-arch digest for a per-arch component
+			desc: "signing a different digest",
+			imgPayload: Cosign{
+				ClaimedIdentity: mustParseDigest(t, "example.com/test/image@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
+				ImageDigest:     validDigest,
+			},
+			expected: `{"critical":{"identity":{"docker-reference":"example.com/test/image@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},"image":{"docker-manifest-digest":"sha256:d34db33fd34db33fd34db33fd34db33fd34db33fd34db33fd34db33fd34db33f"},"type":"cosign container image signature"},"optional":null}`,
 		},
 		{
 			desc: "standard atomic signature",
 			imgPayload: Cosign{
-				Image: mustParseDigest(t, "example.com/atomic/test/image@"+validDigest),
+				ClaimedIdentity: mustParseTag(t, "example.com/atomic/test/image:tag"),
+				ImageDigest:     validDigest,
 				Annotations: map[string]interface{}{
 					"creator":   "atomic",
 					"timestamp": 1458239713,
 				},
 			},
-			expected: `{"critical":{"identity":{"docker-reference":"example.com/atomic/test/image"},"image":{"docker-manifest-digest":"sha256:d34db33fd34db33fd34db33fd34db33fd34db33fd34db33fd34db33fd34db33f"},"type":"cosign container image signature"},"optional":{"creator":"atomic","timestamp":1458239713}}`,
+			expected: `{"critical":{"identity":{"docker-reference":"example.com/atomic/test/image:tag"},"image":{"docker-manifest-digest":"sha256:d34db33fd34db33fd34db33fd34db33fd34db33fd34db33fd34db33fd34db33f"},"type":"cosign container image signature"},"optional":{"creator":"atomic","timestamp":1458239713}}`,
 		},
 		{
 			desc: "arbitrary claims",
 			imgPayload: Cosign{
-				Image: mustParseDigest(t, "example.com/cosign/test/image@"+validDigest),
+				ClaimedIdentity: mustParseTag(t, "example.com/cosign/test/image:tag"),
+				ImageDigest:     validDigest,
 				Annotations: map[string]interface{}{
 					"creator": "anyone",
 					"some_struct": map[string]interface{}{
@@ -72,15 +94,7 @@ func TestMarshalCosign(t *testing.T) {
 					"CamelCase WithSpace": 8.314,
 				},
 			},
-			expected: `{"critical":{"identity":{"docker-reference":"example.com/cosign/test/image"},"image":{"docker-manifest-digest":"sha256:d34db33fd34db33fd34db33fd34db33fd34db33fd34db33fd34db33fd34db33f"},"type":"cosign container image signature"},"optional":{"CamelCase WithSpace":8.314,"creator":"anyone","some_struct":{"false":true,"foo":"bar","nothing":null}}}`,
-		},
-		{
-			desc: "custom identity",
-			imgPayload: Cosign{
-				Image:           mustParseDigest(t, "example.com/test/image@"+validDigest),
-				ClaimedIdentity: "docker.io/library/test:1.2.3",
-			},
-			expected: `{"critical":{"identity":{"docker-reference":"docker.io/library/test:1.2.3"},"image":{"docker-manifest-digest":"sha256:d34db33fd34db33fd34db33fd34db33fd34db33fd34db33fd34db33fd34db33f"},"type":"cosign container image signature"},"optional":null}`,
+			expected: `{"critical":{"identity":{"docker-reference":"example.com/cosign/test/image:tag"},"image":{"docker-manifest-digest":"sha256:d34db33fd34db33fd34db33fd34db33fd34db33fd34db33fd34db33fd34db33f"},"type":"cosign container image signature"},"optional":{"CamelCase WithSpace":8.314,"creator":"anyone","some_struct":{"false":true,"foo":"bar","nothing":null}}}`,
 		},
 	}
 

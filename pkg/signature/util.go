@@ -25,11 +25,12 @@ import (
 	sigpayload "github.com/sigstore/sigstore/pkg/signature/payload"
 )
 
-// SignImage signs a container manifest using the specified signer object
-func SignImage(signer SignerVerifier, image name.Digest, optionalAnnotations map[string]interface{}) (payload, signature []byte, err error) {
+// SignImage signs a container manifest with manifestDigest using the specified signer object, claiming it to be claimedIdentity
+func SignImage(signer SignerVerifier, claimedIdentity name.Reference, manifestDigest string, optionalAnnotations map[string]interface{}) (payload, signature []byte, err error) {
 	imgPayload := sigpayload.Cosign{
-		Image:       image,
-		Annotations: optionalAnnotations,
+		ClaimedIdentity: claimedIdentity,
+		ImageDigest:     manifestDigest,
+		Annotations:     optionalAnnotations,
 	}
 	payload, err = json.Marshal(imgPayload)
 	if err != nil {

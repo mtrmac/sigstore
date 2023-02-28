@@ -36,6 +36,15 @@ func mustParseDigest(t *testing.T, digestStr string) name.Digest {
 	return digest
 }
 
+func mustParseTag(t *testing.T, tagStr string) name.Tag {
+	t.Helper()
+	digest, err := name.NewTag(tagStr)
+	if err != nil {
+		t.Fatalf("could not parse tag %q: %v", tagStr, err)
+	}
+	return digest
+}
+
 func TestProviderRoundtrip(t *testing.T) {
 	ecdsaSV, _, err := NewDefaultECDSASignerVerifier()
 	if err != nil {
@@ -47,24 +56,36 @@ func TestProviderRoundtrip(t *testing.T) {
 	}
 
 	testCases := []struct {
-		desc   string
-		sv     SignerVerifier
-		digest name.Digest
-		claims map[string]interface{}
+		desc     string
+		sv       SignerVerifier
+		identity name.Reference
+		digest   string
+		claims   map[string]interface{}
 	}{
 		{
-			desc:   "ECDSA",
-			sv:     ecdsaSV,
-			digest: mustParseDigest(t, "example.com/ecdsa@"+validDigest),
+			desc:     "ECDSA",
+			sv:       ecdsaSV,
+			identity: mustParseTag(t, "example.com/ecdsa:tag"),
+			digest:   validDigest,
 			claims: map[string]interface{}{
 				"creator":  "ECDSA",
 				"optional": "extras",
 			},
 		},
 		{
-			desc:   "RSA",
-			sv:     rsaSV,
-			digest: mustParseDigest(t, "example.com/rsa@"+validDigest),
+			// - Test that signing a digest is possible in principle
+			// - Demonstrate how the ClaimedIdenitty and ImageDigest fields can differ: signing a multi-arch digest for a per-arch component
+			desc:     "signing a different digest",
+			sv:       ecdsaSV,
+			identity: mustParseDigest(t, "example.com/test/image@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
+			digest:   validDigest,
+			claims:   map[string]interface{}{},
+		},
+		{
+			desc:     "RSA",
+			sv:       rsaSV,
+			identity: mustParseTag(t, "example.com/rsa:tag"),
+			digest:   validDigest,
 			claims: map[string]interface{}{
 				"creator":            "RSA",
 				"Floaty McFloatface": 6.022e23,
@@ -74,7 +95,7 @@ func TestProviderRoundtrip(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.desc, func(t *testing.T) {
-			payload, sig, err := SignImage(tc.sv, tc.digest, tc.claims)
+			payload, sig, err := SignImage(tc.sv, tc.identity, tc.digest, tc.claims)
 			if err != nil {
 				t.Fatalf("SignImage returned error: %v", err)
 			}
@@ -90,11 +111,11 @@ func TestProviderRoundtrip(t *testing.T) {
 			if err := json.Unmarshal(payload, &raw); err != nil {
 				t.Fatalf("Parsing payload verification failed: %v", err)
 			}
-			if tc.digest.Repository.Name() != raw.Critical.Identity.DockerReference {
-				t.Errorf("got identity %q, wanted %q", raw.Critical.Identity.DockerReference, tc.digest.Repository.Name())
+			if tc.identity.Name() != raw.Critical.Identity.DockerReference {
+				t.Errorf("got identity %q, wanted %q", raw.Critical.Identity.DockerReference, tc.identity.Name())
 			}
-			if tc.digest.DigestStr() != raw.Critical.Image.DockerManifestDigest {
-				t.Errorf("got manifest digest %q, wanted %q", raw.Critical.Image.DockerManifestDigest, tc.digest.DigestStr())
+			if tc.digest != raw.Critical.Image.DockerManifestDigest {
+				t.Errorf("got manifest digest %q, wanted %q", raw.Critical.Image.DockerManifestDigest, tc.digest)
 			}
 			if diff := deep.Equal(tc.claims, raw.Optional); diff != nil {
 				t.Errorf("claims were altered during the roundtrip: %v", diff)
