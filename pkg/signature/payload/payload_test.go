@@ -19,7 +19,6 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/go-test/deep"
 	"github.com/google/go-containerregistry/pkg/name"
 )
 
@@ -106,39 +105,18 @@ func TestUnmarshalCosign(t *testing.T) {
 	testCases := []struct {
 		desc    string
 		payload string
-
-		expected  Cosign
-		expectErr bool
 	}{
 		{
-			desc:    "no claims",
+			desc:    "no claims, deprecated repo-only identity",
 			payload: `{"critical":{"identity":{"docker-reference":"example.com/test/image"},"image":{"docker-manifest-digest":"sha256:d34db33fd34db33fd34db33fd34db33fd34db33fd34db33fd34db33fd34db33f"},"type":"cosign container image signature"},"optional":null}`,
-			expected: Cosign{
-				Image:           mustParseDigest(t, "example.com/test/image@"+validDigest),
-				ClaimedIdentity: "example.com/test/image",
-			},
 		},
 		{
-			desc:    "arbitrary claims",
+			desc:    "arbitrary claims, deprecated repo-only identity",
 			payload: `{"critical":{"identity":{"docker-reference":"example.com/cosign/test/image"},"image":{"docker-manifest-digest":"sha256:d34db33fd34db33fd34db33fd34db33fd34db33fd34db33fd34db33fd34db33f"},"type":"cosign container image signature"},"optional":{"CamelCase WithSpace":8.314,"creator":"anyone","some_struct":{"false":true,"foo":"bar","nothing":null}}}`,
-			expected: Cosign{
-				Image:           mustParseDigest(t, "example.com/cosign/test/image@"+validDigest),
-				ClaimedIdentity: "example.com/cosign/test/image",
-				Annotations: map[string]interface{}{
-					"creator": "anyone",
-					"some_struct": map[string]interface{}{
-						"foo":     "bar",
-						"false":   true,
-						"nothing": nil,
-					},
-					"CamelCase WithSpace": 8.314,
-				},
-			},
 		},
 		{
-			desc:      "unknown type",
-			payload:   `{"critical":{"identity":{"docker-reference":"example.com/atomic/test/image"},"image":{"docker-manifest-digest":"sha256:d34db33fd34db33fd34db33fd34db33fd34db33fd34db33fd34db33fd34db33f"},"type":"atomic container signature"},"optional":{}}`,
-			expectErr: true,
+			desc:    "unknown type",
+			payload: `{"critical":{"identity":{"docker-reference":"example.com/atomic/test/image"},"image":{"docker-manifest-digest":"sha256:d34db33fd34db33fd34db33fd34db33fd34db33fd34db33fd34db33fd34db33f"},"type":"atomic container signature"},"optional":{}}`,
 		},
 	}
 
@@ -148,17 +126,8 @@ func TestUnmarshalCosign(t *testing.T) {
 			t.Parallel()
 			var imgPayload Cosign
 			err := json.Unmarshal([]byte(tc.payload), &imgPayload)
-			if err != nil {
-				if !tc.expectErr {
-					t.Fatalf("json.Unmarshal unexpectedly returned an error: %v", err)
-				}
-				return // operation failed successfully
-			}
-			if tc.expectErr {
+			if err == nil {
 				t.Fatalf("json.Unmarshal returned %v, expected an error", imgPayload)
-			}
-			if diff := deep.Equal(tc.expected, imgPayload); diff != nil {
-				t.Errorf("Cosign unmarshalled incorrectly: %v", diff)
 			}
 		})
 	}

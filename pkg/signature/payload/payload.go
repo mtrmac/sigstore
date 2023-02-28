@@ -18,7 +18,7 @@ package payload
 
 import (
 	"encoding/json"
-	"fmt"
+	"errors"
 
 	"github.com/google/go-containerregistry/pkg/name"
 )
@@ -28,12 +28,17 @@ const CosignSignatureType = "cosign container image signature"
 
 // SimpleContainerImage describes the structure of a basic container image signature payload, as defined at:
 // https://github.com/containers/image/blob/master/docs/containers-signature.5.md#json-data-format
+//
+// TO DO: This should be _very_ paranoid about missing fields, duplicated fields, and the like, when decoding.
 type SimpleContainerImage struct {
 	Critical Critical               `json:"critical"` // Critical data critical to correctly evaluating the validity of the signature
 	Optional map[string]interface{} `json:"optional"` // Optional optional metadata about the image
 }
 
 // Critical data critical to correctly evaluating the validity of a signature
+//
+// TO DO: Per the simple signing payload specification, any unrecognized or invalid fields in Critical should cause an unrecoverable failure.
+// This should also be _very_ paranoid about missing fields, duplicated fields, and the like, when decoding.
 type Critical struct {
 	Identity Identity `json:"identity"` // Identity claimed identity of the image
 	Image    Image    `json:"image"`    // Image identifies the container that the signature applies to
@@ -97,26 +102,13 @@ var _ json.Marshaler = Cosign{}
 
 // UnmarshalJSON unmarshals []byte of JSON data into a container signature object
 func (p *Cosign) UnmarshalJSON(data []byte) error {
-	if string(data) == "null" {
-		// JSON "null" is a no-op by convention
-		return nil
-	}
-	var simple SimpleContainerImage
-	if err := json.Unmarshal(data, &simple); err != nil {
-		return err
-	}
-	if simple.Critical.Type != CosignSignatureType {
-		return fmt.Errorf("Cosign signature payload was of an unknown type: %q", simple.Critical.Type)
-	}
-	digestStr := simple.Critical.Identity.DockerReference + "@" + simple.Critical.Image.DockerManifestDigest
-	digest, err := name.NewDigest(digestStr)
-	if err != nil {
-		return fmt.Errorf("could not parse image digest string %q: %w", digestStr, err)
-	}
-	p.Image = digest
-	p.ClaimedIdentity = simple.Critical.Identity.DockerReference
-	p.Annotations = simple.Optional
-	return nil
+	// This is not used by sigstore/sigstore nor sigstore/cosign.
+	//
+	// If anyone choses to implement this:
+	// Prefer sharing a single implementation with sigstore/cosign, wherever it ends up being located.
+	// Per the simple signing payload specification, any unrecognized or invalid fields in Critical should cause an unrecoverable failure.
+	// This should also be _very_ paranoid about missing fields, duplicated fields, and the like.
+	return errors.New("Cosign.UnmarshalJSON is unimplemented; use sigstore/cosign.SimpleClainVerifier instead")
 }
 
 var _ json.Unmarshaler = (*Cosign)(nil)

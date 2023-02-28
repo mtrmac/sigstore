@@ -41,15 +41,3 @@ func SignImage(signer SignerVerifier, image name.Digest, optionalAnnotations map
 	}
 	return payload, signature, nil
 }
-
-// VerifyImageSignature verifies a signature over a container manifest
-func VerifyImageSignature(signer SignerVerifier, payload, signature []byte) (image name.Digest, annotations map[string]interface{}, err error) {
-	if err := signer.VerifySignature(bytes.NewReader(signature), bytes.NewReader(payload)); err != nil {
-		return name.Digest{}, nil, fmt.Errorf("signature verification failed: %w", err)
-	}
-	var imgPayload sigpayload.Cosign
-	if err := json.Unmarshal(payload, &imgPayload); err != nil {
-		return name.Digest{}, nil, fmt.Errorf("could not deserialize image payload: %w", err)
-	}
-	return imgPayload.Image, imgPayload.Annotations, nil
-}

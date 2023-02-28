@@ -16,10 +16,13 @@
 package signature
 
 import (
+	"bytes"
+	"encoding/json"
 	"testing"
 
 	"github.com/go-test/deep"
 	"github.com/google/go-containerregistry/pkg/name"
+	sigpayload "github.com/sigstore/sigstore/pkg/signature/payload"
 )
 
 const validDigest = "sha256:d34db33fd34db33fd34db33fd34db33fd34db33fd34db33fd34db33fd34db33f"
@@ -76,14 +79,24 @@ func TestProviderRoundtrip(t *testing.T) {
 				t.Fatalf("SignImage returned error: %v", err)
 			}
 
-			rtDigest, rtClaims, err := VerifyImageSignature(tc.sv, payload, sig)
-			if err != nil {
-				t.Fatalf("VerifyImageSignature returned error: %v", err)
+			// This is not a paranoid enough signature verification implementation, but just enough for a smoke test.
+			if err := tc.sv.VerifySignature(bytes.NewReader(sig), bytes.NewReader(payload)); err != nil {
+				t.Fatalf("Cryptographic signature verification failed: %v", err)
 			}
-			if tc.digest.Name() != rtDigest.Name() {
-				t.Errorf("got digest %q, wanted %q", rtDigest.Name(), tc.digest.Name())
+			var raw struct { // not payload.Cosign, which explicitly refuses to UnmarshalJSON
+				Critical sigpayload.Critical
+				Optional map[string]interface{}
 			}
-			if diff := deep.Equal(tc.claims, rtClaims); diff != nil {
+			if err := json.Unmarshal(payload, &raw); err != nil {
+				t.Fatalf("Parsing payload verification failed: %v", err)
+			}
+			if tc.digest.Repository.Name() != raw.Critical.Identity.DockerReference {
+				t.Errorf("got identity %q, wanted %q", raw.Critical.Identity.DockerReference, tc.digest.Repository.Name())
+			}
+			if tc.digest.DigestStr() != raw.Critical.Image.DockerManifestDigest {
+				t.Errorf("got manifest digest %q, wanted %q", raw.Critical.Image.DockerManifestDigest, tc.digest.DigestStr())
+			}
+			if diff := deep.Equal(tc.claims, raw.Optional); diff != nil {
 				t.Errorf("claims were altered during the roundtrip: %v", diff)
 			}
 		})
